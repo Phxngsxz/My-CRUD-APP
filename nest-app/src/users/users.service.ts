@@ -34,28 +34,48 @@ export class UsersService {
     return this.userRepository.save(newUser);
   }
 
-  async findAll(query: any) {
-  const { page = 1, limit = 10, search, sortBy = 'id', order = 'ASC' } = query;
-  const where = search
-    ? [
-        { name: Like(`%${search}%`) },
-        { username: Like(`%${search}%`) },
-      ]
-    : {};
-  const [data, total] = await this.userRepository.findAndCount({
-    where,
-    skip: (page - 1) * limit,
-    take: limit,
-    order: { [sortBy]: order.toUpperCase() },
-  });
-  return {
-    data,
-    total,
-    page: +page,
-    limit: +limit,
-    last_page: Math.ceil(total / limit),
-  };
-}
+  async findAll(query: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    sortBy?: string;
+    order?: 'ASC' | 'DESC';
+  }) {
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const search = query.search || '';
+    const sortBy = query.sortBy || 'id';
+    const order = query.order === 'DESC' ? 'DESC' : 'ASC';
+
+    const searchQuery = `%${search}%`;
+
+    const data = await this.userRepository.query(
+      `
+      SELECT * FROM users 
+      WHERE name LIKE ? OR username LIKE ? OR address LIKE ?
+      ORDER BY ${sortBy} ${order}
+      LIMIT ? OFFSET ?
+      `,
+      [searchQuery, searchQuery, searchQuery, limit, offset],
+    );
+
+    const total = await this.userRepository.query(
+      `
+      SELECT COUNT(*) as count FROM users 
+      WHERE name LIKE ? OR username LIKE ? OR address LIKE ?
+      `,
+      [searchQuery, searchQuery, searchQuery],
+    );
+
+    return {
+      data,
+      total: Number(total[0].count),
+      page,
+      limit,
+      last_page: Math.ceil(Number(total[0].count) / limit),
+    };
+  }
 
   findOne(id: number) {
     return this.userRepository.findOneBy({ id });
