@@ -44,6 +44,9 @@ const Home = () => {
   const [limit, setLimit] = useState<number | undefined>(undefined); // ไม่ fix
   const [total, setTotal] = useState(0);
   const [lastPage, setLastPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"id" | "name" | "age">("id");
+  const [order, setOrder] = useState<"ASC" | "DESC">("ASC");
 
   const [newUser, setNewUser] = useState<Omit<User, "id">>({
     name: "",
@@ -67,8 +70,14 @@ const Home = () => {
   const fetchUsers = async (pageNum = page) => {
     setLoading(true);
     try {
+      const params = new URLSearchParams({
+        page: pageNum.toString(),
+        ...(search && { search }),
+        sortBy,
+        order,
+      });
       const res = await fetch(
-        `http://localhost:3333/users?page=${pageNum}`,
+        `http://localhost:3333/users?${params.toString()}`,
         { cache: "no-store" }
       );
       if (!res.ok) throw new Error("Failed to fetch users");
@@ -92,7 +101,7 @@ const Home = () => {
     }
     fetchUsers(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, page]);
+  }, [router, page, search, sortBy, order]);
 
   const handleCreate = async () => {
     try {
@@ -198,30 +207,57 @@ const Home = () => {
           >
             User List
           </Typography>
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "flex-end",
-              mb: 3,
-            }}
-          >
+          <Box sx={{ display: "flex", gap: 2, mb: 3, alignItems: "center" }}>
+            <TextField
+              label="Search"
+              value={search}
+              onChange={e => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              size="small"
+              sx={{ width: 220 }}
+            />
+            <TextField
+              select
+              label="Sort By"
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as "id" | "name" | "age")}
+              size="small"
+              sx={{ width: 120 }}
+              SelectProps={{ native: true }}
+            >
+              <option value="id">ID</option>
+              <option value="name">Name</option>
+              <option value="age">Age</option>
+            </TextField>
+            <TextField
+              select
+              label="Order"
+              value={order}
+              onChange={e => setOrder(e.target.value as "ASC" | "DESC")}
+              size="small"
+              sx={{ width: 120 }}
+              SelectProps={{ native: true }}
+            >
+              <option value="ASC">ASC</option>
+              <option value="DESC">DESC</option>
+            </TextField>
+            <Box sx={{ flex: 1 }} /> {/* ดัน Add User ไปขวาสุด */}
             <Button
               variant="contained"
-              startIcon={<Add />}
+              color="primary"
               onClick={() => setOpen(true)}
               sx={{
-                background: "linear-gradient(90deg, #6366f1 0%, #06b6d4 100%)",
-                fontWeight: 600,
-                px: 3,
-                py: 1.2,
-                borderRadius: 2,
+                height: 40,
+                minWidth: 120,
+                fontWeight: "bold",
+                background: "linear-gradient(90deg, #6366f1 0%, #38bdf8 100%)",
+                color: "#fff",
                 boxShadow: 2,
-                "&:hover": {
-                  background: "linear-gradient(90deg, #4338ca 0%, #0e7490 100%)",
-                },
-              }}
+                }}
             >
-              Add User
+              + ADD USER
             </Button>
           </Box>
 

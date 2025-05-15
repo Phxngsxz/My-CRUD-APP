@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
-import { Repository } from 'typeorm';
+import { Like, Repository } from 'typeorm';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConflictException } from '@nestjs/common';
@@ -34,22 +34,28 @@ export class UsersService {
     return this.userRepository.save(newUser);
   }
 
-  async findAll(pagination: PaginationDto) {
-    const { page = 1, limit = 20 } = pagination; // เปลี่ยน default limit เป็น 20
-    const [data, total] = await this.userRepository.findAndCount({
-      skip: (page - 1) * limit,
-      take: limit,
-      order: { id: 'ASC' },
-    });
-
-    return {
-      data,
-      total,
-      page,
-      limit,
-      last_page: Math.ceil(total / limit),
-    };
-  }
+  async findAll(query: any) {
+  const { page = 1, limit = 10, search, sortBy = 'id', order = 'ASC' } = query;
+  const where = search
+    ? [
+        { name: Like(`%${search}%`) },
+        { username: Like(`%${search}%`) },
+      ]
+    : {};
+  const [data, total] = await this.userRepository.findAndCount({
+    where,
+    skip: (page - 1) * limit,
+    take: limit,
+    order: { [sortBy]: order.toUpperCase() },
+  });
+  return {
+    data,
+    total,
+    page: +page,
+    limit: +limit,
+    last_page: Math.ceil(total / limit),
+  };
+}
 
   findOne(id: number) {
     return this.userRepository.findOneBy({ id });
