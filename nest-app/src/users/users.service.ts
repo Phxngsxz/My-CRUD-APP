@@ -4,9 +4,10 @@ import { Repository } from 'typeorm';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConflictException } from '@nestjs/common';
-import { User } from './entities/user.entity';
 import { NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { User } from './entities/user.entity';
+import { PaginationDto } from './dto/pagination.dto';
 
 @Injectable()
 export class UsersService {
@@ -33,8 +34,21 @@ export class UsersService {
     return this.userRepository.save(newUser);
   }
 
-  findAll() {
-    return this.userRepository.find();
+  async findAll(pagination: PaginationDto) {
+    const { page = 1, limit = 20 } = pagination; // เปลี่ยน default limit เป็น 20
+    const [data, total] = await this.userRepository.findAndCount({
+      skip: (page - 1) * limit,
+      take: limit,
+      order: { id: 'ASC' },
+    });
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      last_page: Math.ceil(total / limit),
+    };
   }
 
   findOne(id: number) {

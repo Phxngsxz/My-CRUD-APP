@@ -22,9 +22,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@mui/material";
-import TableSortLabel from "@mui/material/TableSortLabel";
-import TablePagination from "@mui/material/TablePagination";
-import { Add, Edit, Delete, Search as SearchIcon } from "@mui/icons-material";
+import { Add, Edit, Delete } from "@mui/icons-material";
 
 const drawerWidth = 240;
 
@@ -42,7 +40,10 @@ const Home = () => {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState<number | undefined>(undefined); // ไม่ fix
+  const [total, setTotal] = useState(0);
+  const [lastPage, setLastPage] = useState(1);
 
   const [newUser, setNewUser] = useState<Omit<User, "id">>({
     name: "",
@@ -61,12 +62,27 @@ const Home = () => {
     address: "",
   });
 
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(5);
-  const [orderBy, setOrderBy] = useState<keyof User>("id");
-  const [order, setOrder] = useState<"asc" | "desc">("asc");
-
   const router = useRouter();
+
+  const fetchUsers = async (pageNum = page) => {
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `http://localhost:3333/users?page=${pageNum}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error("Failed to fetch users");
+      const data = await res.json();
+      setUsers(data.items || data.data || []);
+      setTotal(data.total || 0);
+      setLimit(data.limit); // รับ limit จาก backend
+      setLastPage(data.last_page || 1); // รับ last_page จาก backend
+    } catch (err) {
+      console.error("Error fetching data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -74,22 +90,9 @@ const Home = () => {
       router.push("/login");
       return;
     }
-
-    const fetchData = async () => {
-      try {
-        const res = await fetch("http://localhost:3333/users", { cache: "no-store" });
-        if (!res.ok) throw new Error("Failed to fetch users");
-        const data = await res.json();
-        setUsers(data);
-      } catch (err) {
-        console.error("Error fetching data:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [router]);
+    fetchUsers(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, page]);
 
   const handleCreate = async () => {
     try {
@@ -100,14 +103,18 @@ const Home = () => {
       });
 
       if (res.ok) {
-        const createdUser = await res.json();
-        setUsers((prev) => [...prev, createdUser]);
-        setNewUser({ name: "", username: "", password: "", age: 0, address: "" });
         setOpen(false);
+        setNewUser({ name: "", username: "", password: "", age: 0, address: "" });
+        // รีเฟรชข้อมูลหน้าแรก (หรือจะใช้ page เดิมก็ได้)
+        setPage(1);
+        fetchUsers(1);
       } else {
-        console.error("Failed to create user");
+        const errMsg = await res.text();
+        alert("Failed to create user: " + errMsg);
+        console.error("Failed to create user:", errMsg);
       }
     } catch (err) {
+      alert("Error creating user: " + err);
       console.error("Error creating user:", err);
     }
   };
@@ -150,46 +157,6 @@ const Home = () => {
       console.error("Error deleting user:", err);
     }
   };
-
-  const handleRequestSort = (property: keyof User) => {
-    const isAsc = orderBy === property && order === "asc";
-    setOrder(isAsc ? "desc" : "asc");
-    setOrderBy(property);
-  };
-
-  const handleChangePage = (event: unknown, newPage: number) => {
-    setPage(newPage);
-  };
-
-  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
-
-  function descendingComparator<T>(a: T, b: T, orderBy: keyof T) {
-    if (b[orderBy] < a[orderBy]) return -1;
-    if (b[orderBy] > a[orderBy]) return 1;
-    return 0;
-  }
-
-  function getComparator<Key extends keyof any>(
-    order: "asc" | "desc",
-    orderBy: Key
-  ): (a: { [key in Key]: any }, b: { [key in Key]: any }) => number {
-    return order === "desc"
-      ? (a, b) => descendingComparator(a, b, orderBy)
-      : (a, b) => -descendingComparator(a, b, orderBy);
-  }
-
-  const filteredUsers = users.filter(
-    (user) =>
-      user.name.toLowerCase().includes(search.toLowerCase()) ||
-      user.username.toLowerCase().includes(search.toLowerCase()) ||
-      user.address.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const sortedUsers = filteredUsers.slice().sort(getComparator(order, orderBy));
-  const paginatedUsers = sortedUsers.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   if (loading) return <p>Loading...</p>;
 
@@ -234,11 +201,8 @@ const Home = () => {
           <Box
             sx={{
               display: "flex",
-              flexDirection: { xs: "column", sm: "row" },
-              alignItems: { xs: "stretch", sm: "center" },
-              gap: 2,
+              justifyContent: "flex-end",
               mb: 3,
-              justifyContent: "space-between",
             }}
           >
             <Button
@@ -259,85 +223,22 @@ const Home = () => {
             >
               Add User
             </Button>
-            <TextField
-              label="Search"
-              variant="outlined"
-              size="small"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(0);
-              }}
-              sx={{
-                minWidth: { xs: "100%", sm: 300 },
-                background: "#f3f4f6",
-                borderRadius: 2,
-                boxShadow: 1,
-              }}
-              InputProps={{
-                startAdornment: (
-                  <SearchIcon sx={{ color: "#94a3b8", mr: 1 }} />
-                ),
-              }}
-            />
           </Box>
 
-          <TableContainer
-            component={Paper}
-            sx={{
-              mt: 2,
-              borderRadius: 3,
-              boxShadow: 3,
-              overflow: "hidden",
-            }}
-          >
+          <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: 3 }}>
             <Table>
               <TableHead>
                 <TableRow sx={{ background: "#f1f5f9" }}>
-                  <TableCell>
-                    <TableSortLabel
-                      active={orderBy === "id"}
-                      direction={orderBy === "id" ? order : "asc"}
-                      onClick={() => handleRequestSort("id")}
-                    >
-                      <b>ID</b>
-                    </TableSortLabel>
-                  </TableCell>
-                  <TableCell>
-                    <TableSortLabel
-                      active={orderBy === "name"}
-                      direction={orderBy === "name" ? order : "asc"}
-                      onClick={() => handleRequestSort("name")}
-                    >
-                      <b>Name</b>
-                    </TableSortLabel>
-                  </TableCell>
-                  <TableCell>
-                    <TableSortLabel
-                      active={orderBy === "age"}
-                      direction={orderBy === "age" ? order : "asc"}
-                      onClick={() => handleRequestSort("age")}
-                    >
-                      <b>Age</b>
-                    </TableSortLabel>
-                  </TableCell>
-                  <TableCell>
-                    <TableSortLabel
-                      active={orderBy === "address"}
-                      direction={orderBy === "address" ? order : "asc"}
-                      onClick={() => handleRequestSort("address")}
-                    >
-                      <b>Address</b>
-                    </TableSortLabel>
-                  </TableCell>
-                  <TableCell align="center">
-                    <b>Actions</b>
-                  </TableCell>
+                  <TableCell><b>ID</b></TableCell>
+                  <TableCell><b>Name</b></TableCell>
+                  <TableCell><b>Age</b></TableCell>
+                  <TableCell><b>Address</b></TableCell>
+                  <TableCell align="center"><b>Actions</b></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {paginatedUsers.length > 0 ? (
-                  paginatedUsers.map((user) => (
+                {users.length > 0 ? (
+                  users.map((user) => (
                     <TableRow
                       key={user.id}
                       hover
@@ -407,115 +308,73 @@ const Home = () => {
                 )}
               </TableBody>
             </Table>
-            <TablePagination
-              component="div"
-              count={filteredUsers.length}
-              page={page}
-              onPageChange={handleChangePage}
-              rowsPerPage={rowsPerPage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              rowsPerPageOptions={[5, 10, 25]}
-              sx={{
-                ".MuiTablePagination-toolbar": { background: "#f1f5f9" },
-                ".MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows": {
-                  color: "#64748b",
-                },
-              }}
-            />
           </TableContainer>
+
+          {/* Pagination Controls */}
+          <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", mt: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+              disabled={page === 1}
+              sx={{ mr: 2 }}
+            >
+              Prev
+            </Button>
+            <Typography>
+              Page {page} of {lastPage}
+            </Typography>
+            <Button
+              variant="outlined"
+              onClick={() => setPage((prev) => prev + 1)}
+              disabled={page >= lastPage}
+              sx={{ ml: 2 }}
+            >
+              Next
+            </Button>
+          </Box>
         </Container>
 
-        {/* Add User Dialog */}
+        {/* Add Dialog */}
         <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
           <DialogTitle sx={{ fontWeight: 700, color: "#3b82f6" }}>
             Add New User
           </DialogTitle>
           <DialogContent sx={{ pb: 0 }}>
-            <TextField
-              autoFocus fullWidth margin="dense" label="Name"
-              value={newUser.name}
-              onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth margin="dense" label="Username"
-              value={newUser.username}
-              onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth margin="dense" label="Password" type="password"
-              value={newUser.password}
-              onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth margin="dense" label="Age" type="number"
-              value={newUser.age}
-              onChange={(e) => setNewUser({ ...newUser, age: parseInt(e.target.value) || 0 })}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth margin="dense" label="Address"
-              value={newUser.address}
-              onChange={(e) => setNewUser({ ...newUser, address: e.target.value })}
-              sx={{ mb: 2 }}
-            />
+            <TextField fullWidth margin="dense" label="Name" value={newUser.name}
+              onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} sx={{ mb: 2 }} />
+            <TextField fullWidth margin="dense" label="Username" value={newUser.username}
+              onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} sx={{ mb: 2 }} />
+            <TextField fullWidth margin="dense" label="Password" type="password" value={newUser.password}
+              onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} sx={{ mb: 2 }} />
+            <TextField fullWidth margin="dense" label="Age" type="number" value={newUser.age}
+              onChange={(e) => setNewUser({ ...newUser, age: parseInt(e.target.value) || 0 })} sx={{ mb: 2 }} />
+            <TextField fullWidth margin="dense" label="Address" value={newUser.address}
+              onChange={(e) => setNewUser({ ...newUser, address: e.target.value })} sx={{ mb: 2 }} />
           </DialogContent>
           <DialogActions sx={{ pb: 2, pr: 3 }}>
-            <Button onClick={() => setOpen(false)} color="secondary" variant="outlined">
-              Cancel
-            </Button>
-            <Button onClick={handleCreate} color="primary" variant="contained">
-              Add
-            </Button>
+            <Button onClick={() => setOpen(false)} color="secondary" variant="outlined">Cancel</Button>
+            <Button onClick={handleCreate} color="primary" variant="contained">Add</Button>
           </DialogActions>
         </Dialog>
 
-        {/* Edit User Dialog */}
+        {/* Edit Dialog */}
         <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="xs" fullWidth>
-          <DialogTitle sx={{ fontWeight: 700, color: "#6366f1" }}>
-            Edit User
-          </DialogTitle>
+          <DialogTitle sx={{ fontWeight: 700, color: "#6366f1" }}>Edit User</DialogTitle>
           <DialogContent sx={{ pb: 0 }}>
-            <TextField
-              autoFocus fullWidth margin="dense" label="Name"
-              value={editUser.name}
-              onChange={(e) => setEditUser({ ...editUser, name: e.target.value })}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth margin="dense" label="Username"
-              value={editUser.username}
-              onChange={(e) => setEditUser({ ...editUser, username: e.target.value })}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth margin="dense" label="Password" type="password"
-              value={editUser.password}
-              onChange={(e) => setEditUser({ ...editUser, password: e.target.value })}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth margin="dense" label="Age" type="number"
-              value={editUser.age}
-              onChange={(e) => setEditUser({ ...editUser, age: parseInt(e.target.value) || 0 })}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth margin="dense" label="Address"
-              value={editUser.address}
-              onChange={(e) => setEditUser({ ...editUser, address: e.target.value })}
-              sx={{ mb: 2 }}
-            />
+            <TextField fullWidth margin="dense" label="Name" value={editUser.name}
+              onChange={(e) => setEditUser({ ...editUser, name: e.target.value })} sx={{ mb: 2 }} />
+            <TextField fullWidth margin="dense" label="Username" value={editUser.username}
+              onChange={(e) => setEditUser({ ...editUser, username: e.target.value })} sx={{ mb: 2 }} />
+            <TextField fullWidth margin="dense" label="Password" type="password" value={editUser.password}
+              onChange={(e) => setEditUser({ ...editUser, password: e.target.value })} sx={{ mb: 2 }} />
+            <TextField fullWidth margin="dense" label="Age" type="number" value={editUser.age}
+              onChange={(e) => setEditUser({ ...editUser, age: parseInt(e.target.value) || 0 })} sx={{ mb: 2 }} />
+            <TextField fullWidth margin="dense" label="Address" value={editUser.address}
+              onChange={(e) => setEditUser({ ...editUser, address: e.target.value })} sx={{ mb: 2 }} />
           </DialogContent>
           <DialogActions sx={{ pb: 2, pr: 3 }}>
-            <Button onClick={() => setEditOpen(false)} color="secondary" variant="outlined">
-              Cancel
-            </Button>
-            <Button onClick={handleEdit} color="primary" variant="contained">
-              Save
-            </Button>
+            <Button onClick={() => setEditOpen(false)} color="secondary" variant="outlined">Cancel</Button>
+            <Button onClick={handleEdit} color="primary" variant="contained">Save</Button>
           </DialogActions>
         </Dialog>
       </Box>
